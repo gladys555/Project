@@ -1,0 +1,63 @@
+import numpy as np
+import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier, GradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import StackingClassifier
+from sklearn.metrics import accuracy_score, auc
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+df = pd.read_csv('heart_statlog_cleveland_hungary_final.csv')
+
+# Data preprocessing
+X = df.iloc[:, :-1].values
+y = df.iloc[:, -1].values
+
+scaler = MinMaxScaler()
+X_scaled = scaler.fit_transform(X)
+
+# Feature selection
+feature_selector = ExtraTreesClassifier(n_estimators=100, criterion='gini', random_state=42)
+feature_selector.fit(X_scaled, y)
+feature_importances = feature_selector.feature_importances_
+
+selected_features = np.argsort(feature_importances)[-10:]
+X_selected = X_scaled[:, selected_features]
+
+# Train-test split
+X_train, X_test, y_train, y_test = train_test_split(X_selected, y, test_size=0.2, random_state=42)
+
+# Base models for stacking
+base_models = [
+    ('lr', LogisticRegression(random_state=42)),
+    ('rf', RandomForestClassifier(n_estimators=100, random_state=42)),
+    ('gb', GradientBoostingClassifier(n_estimators=100, random_state=42))
+]
+
+# Stacking classifier
+stacking_clf = StackingClassifier(estimators=base_models, final_estimator=LogisticRegression(), cv=5)
+stacking_clf.fit(X_train, y_train)
+
+# Predictions
+y_pred = stacking_clf.predict(X_test)
+
+print(f"Test Accuracy: {accuracy}")
+
+# Distribution of Selected Features
+selected_feature_names = [df.columns[i] for i in selected_features]
+for feature in selected_feature_names:
+    plt.figure(figsize=(8, 4))
+    sns.histplot(df[feature], kde=True, color='blue')
+    plt.title(f'Distribution of {feature}')
+    plt.show()
+
+# Feature Importance Bar Plot
+plt.figure(figsize=(10, 6))
+plt.barh(range(len(selected_features)), feature_selector.feature_importances_[selected_features], align='center')
+plt.yticks(range(len(selected_features)), [df.columns[i] for i in selected_features])
+plt.xlabel("Feature Importance")
+plt.ylabel("Feature")
+plt.title("Feature Importances after ExtraTreesClassifier")
+plt.show()
